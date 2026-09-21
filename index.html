@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Major Hospital AI Video Creator</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div><strong>Major Hospital</strong><span>AI Video Creator</span></div>
+  <button id="settingsBtn" class="ghost">Settings</button>
+</header>
+
+<main>
+  <section class="card">
+    <h1>Create a medical video</h1>
+    <p class="muted">Gemini creates the script and scene images. The website adds licensed background music and exports a vertical MP4.</p>
+
+    <label>Topic</label>
+    <textarea id="topic" rows="3" placeholder="Example: Knee pain — common causes and when to see an orthopaedic doctor"></textarea>
+
+    <div class="grid">
+      <div>
+        <label>Language</label>
+        <select id="language"><option>Hindi</option><option>English</option><option>Hindi + English</option></select>
+      </div>
+      <div>
+        <label>Scenes</label>
+        <select id="sceneCount"><option>5</option><option selected>6</option><option>7</option></select>
+      </div>
+      <div>
+        <label>Seconds / scene</label>
+        <select id="seconds"><option>4</option><option selected>5</option><option>6</option><option>7</option></select>
+      </div>
+    </div>
+
+    <div class="row">
+      <label class="check"><input id="music" type="checkbox" checked> Add background music</label>
+      <label class="check"><input id="captions" type="checkbox" checked> Add captions</label>
+    </div>
+
+    <button id="generate" class="primary">Generate Video</button>
+    <button id="stop" class="danger hidden">Stop</button>
+
+    <div id="status" class="status">Ready.</div>
+    <div class="progress"><div id="bar"></div></div>
+  </section>
+
+  <section id="scenesCard" class="card hidden">
+    <h2>Scenes</h2>
+    <div id="scenes"></div>
+  </section>
+
+  <section id="resultCard" class="card hidden">
+    <h2>Final video</h2>
+    <video id="preview" controls playsinline></video>
+    <a id="download" class="primary download">Download MP4</a>
+    <div id="credits" class="credits"></div>
+  </section>
+</main>
+
+<div id="settings" class="modal hidden">
+  <div class="modalBox">
+    <button id="closeSettings" class="close">×</button>
+    <h2>Website settings</h2>
+    <p>Gemini API key is configured on the server. You do not enter it for each video.</p>
+    <p class="muted">For deployment, set <code>GEMINI_API_KEY</code> once in your hosting provider's environment variables.</p>
+    <label>Hospital end-card text</label>
+    <input id="hospitalText" value="Major Hospital • Dhaka, East Champaran">
+    <button id="saveSettings" class="primary">Save</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

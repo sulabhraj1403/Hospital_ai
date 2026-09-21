@@ -1,0 +1,6 @@
+{
+  "name":"major-hospital-ai-video-creator",
+  "private":true,
+  "type":"module",
+  "dependencies":{"@google/genai":"latest"}
+}
