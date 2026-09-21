@@ -319,17 +319,35 @@ async function makeVideo(
   const base =
     "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
 
-  await ff.load({
-    coreURL: await toBlobURL(
-      base + "/ffmpeg-core.js",
+  const coreBase =
+  "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+
+const ffmpegWorker =
+  "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js";
+
+const [coreURL, wasmURL, classWorkerURL] =
+  await Promise.all([
+    toBlobURL(
+      `${coreBase}/ffmpeg-core.js`,
       "text/javascript"
     ),
 
-    wasmURL: await toBlobURL(
-      base + "/ffmpeg-core.wasm",
+    toBlobURL(
+      `${coreBase}/ffmpeg-core.wasm`,
       "application/wasm"
+    ),
+
+    toBlobURL(
+      ffmpegWorker,
+      "text/javascript"
     )
-  });
+  ]);
+
+await ff.load({
+  coreURL,
+  wasmURL,
+  classWorkerURL
+});
 
   for (let i = 0; i < images.length; i++) {
     await ff.writeFile(
