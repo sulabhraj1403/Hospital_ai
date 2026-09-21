@@ -1,36 +1,47 @@
 # Major Hospital AI Video Creator
 
-A mobile-friendly website for generating vertical medical-awareness videos.
+Vercel-hosted web app for creating vertical medical-awareness videos.
 
 ## Architecture
 
-- Browser UI: `index.html`, `app.js`, `styles.css`
-- Secure Gemini calls: `/api/script.js` and `/api/image.js`
-- Gemini text model: `gemini-2.5-flash`
-- Gemini native image generation: `gemini-2.5-flash-image`
-- Background music: searches Wikimedia Commons for audio files and displays the license/source
-- Video assembly: FFmpeg.wasm in the browser
-- Output: MP4, vertical 9:16
+- **OpenRouter** generates the script and scene prompts.
+- **Pollinations AI** generates scene images.
+- **Browser FFmpeg** creates the vertical MP4.
+- **Vercel API functions** keep API keys server-side.
 
-## Deploy on Vercel from a phone
+## Project structure
 
-1. Create a GitHub repository and upload this folder.
-2. Import the repository into Vercel.
-3. In Vercel: Project Settings → Environment Variables.
-4. Add `GEMINI_API_KEY` with a NEW Gemini API key.
-5. Redeploy.
-6. Open the Vercel URL on your phone.
+```text
+index.html
+styles.css
+app.js
+package.json
+vercel.json
 
-The key is never put into browser JavaScript.
+api/
+  script.js
+  image.js
+```
 
-## Important
+## Environment variables
 
-The Gemini key previously shared in chat should be revoked/rotated before deployment. Never commit a real key to GitHub.
+Add these in Vercel → Project Settings → Environment Variables:
 
-The first image model used here is `gemini-2.5-flash-image`. Google currently lists this model as deprecated with a shutdown date of October 2, 2026, so the image model should be changed to a currently supported Nano Banana image model before that date. Check Google's model/pricing pages when deploying.
+```text
+OPENROUTER_API_KEY=your_openrouter_key
+POLLINATIONS_API_KEY=your_pollinations_key
+```
 
-## Limitations
+This version does **not** use Google Gemini. Remove any old `GEMINI_API_KEY` variable.
 
-- Video assembly happens on the phone browser and can be memory-intensive for long videos.
-- Wikimedia music search may not always find a suitable audio file. The video can still be generated without music.
-- FFmpeg.wasm is loaded from jsDelivr, so the first video generation needs an internet connection.
+## Deployment
+
+1. Replace the old `package.json`, `.env.example`, and `README.md` with these versions.
+2. Verify that the deployed repository contains the current `api/script.js` and `api/image.js`.
+3. Commit and push the changes to GitHub.
+4. Redeploy in Vercel.
+5. Test script generation and image generation.
+
+## Image generation
+
+The scene prompts are intended for professional medical-awareness content. They avoid provocative or sexually suggestive imagery and favor doctors, patients in normal clinical settings, and medically appropriate anatomical/educational visuals.
