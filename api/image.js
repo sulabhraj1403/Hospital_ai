@@ -1,118 +1,100 @@
-// FREE replacement for the previous Gemini image-generation endpoint.
-// This version does NOT call a paid Gemini image model.
-// It searches Wikimedia Commons for an openly licensed image and returns it
-// in the same format expected by the existing app.js.
+// Pollinations AI image-generation endpoint.
+// Replace the previous Wikimedia/Gemini image endpoint with this file.
+// Required Vercel environment variable:
+//   POLLINATIONS_API_KEY
+//
+// The key stays server-side and is never sent to the browser.
 
-function cleanQuery(prompt) {
-  // Turn the Gemini-generated image prompt into a short Commons search query.
+function cleanPrompt(prompt) {
   return String(prompt || "")
-    .replace(/vertical|9:16|photorealistic|medical-awareness|clean|professional/gi, " ")
-    .replace(/[^\w\s-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 12)
-    .join(" ");
-}
-
-function allowed(info) {
-  const md = info.extmetadata || {};
-  const license = String(
-    md.LicenseShortName?.value ||
-    md.License?.value ||
-    ""
-  ).toLowerCase();
-
-  // Prefer explicit Creative Commons/public-domain licenses.
-  return (
-    license.includes("cc by") ||
-    license.includes("cc0") ||
-    license.includes("public domain") ||
-    license.includes("pd")
-  );
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 6000);
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST")
+  if (req.method !== "POST") {
     return res.status(405).json({ error: "POST only" });
+  }
 
   try {
-    const prompt = String(req.body?.prompt || "");
-    if (!prompt)
+    const prompt = cleanPrompt(req.body?.prompt);
+
+    if (!prompt) {
       return res.status(400).json({ error: "Prompt required" });
+    }
 
-    const query = cleanQuery(prompt);
+    const apiKey = process.env.POLLINATIONS_API_KEY;
 
-    const api =
-      "https://commons.wikimedia.org/w/api.php" +
-      "?action=query" +
-      "&generator=search" +
-      "&gsrnamespace=6" +
-      "&gsrlimit=20" +
-      "&prop=imageinfo" +
-      "&iiprop=url|mime|extmetadata" +
-      "&iiurlwidth=1080" +
-      "&format=json" +
-      "&origin=*"+
-      "&gsrsearch=" + encodeURIComponent(query);
+    if (!apiKey) {
+      return res.status(500).json({
+        error: "POLLINATIONS_API_KEY is not configured in Vercel."
+      });
+    }
 
-    const response = await fetch(api);
-    if (!response.ok)
-      throw new Error("Wikimedia Commons search failed");
+    // FLUX Schnell is intended for fast image generation.
+    // 768x1365 keeps the vertical 9:16 composition while reducing
+    // generation size/time; FFmpeg scales it to the final video size.
+    const params = new URLSearchParams({
+      model: "flux",
+      width: "768",
+      height: "1365",
+      nologo: "true"
+    });
 
-    const data = await response.json();
-    const pages = Object.values(data.query?.pages || {});
+    const url =
+      "https://gen.pollinations.ai/image/" +
+      encodeURIComponent(prompt) +
+      "?" +
+      params.toString();
 
-    // Prefer licensed images and common web image formats.
-    const candidates = pages
-      .filter(p => p.imageinfo?.[0]?.url)
-      .filter(p => {
-        const mime = p.imageinfo[0].mime || "";
-        return /^image\/(jpeg|jpg|png|webp)$/i.test(mime);
-      })
-      .filter(p => allowed(p.imageinfo[0]))
-      .map(p => ({
-        page: p,
-        info: p.imageinfo[0]
-      }));
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "image/jpeg,image/png,image/webp,image/svg+xml"
+      }
+    });
 
-    if (!candidates.length)
-      throw new Error("No suitable free image was found for this scene. Try a broader topic.");
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      let message = `Pollinations image generation failed (${response.status})`;
 
-    // Pick the first licensed candidate. The server downloads it so the
-    // browser does not need to deal with Wikimedia CORS/hotlinking.
-    const chosen = candidates[0];
-    const img = await fetch(chosen.info.url);
-    if (!img.ok) throw new Error("Could not download selected image");
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed.error) message += `: ${parsed.error}`;
+        else if (parsed.message) message += `: ${parsed.message}`;
+      } catch {
+        if (body) message += `: ${body.slice(0, 300)}`;
+      }
 
-    const mime = chosen.info.mime || "image/jpeg";
-    const bytes = Buffer.from(await img.arrayBuffer());
-    const imageBase64 = bytes.toString("base64");
+      throw new Error(message);
+    }
 
-    const md = chosen.info.extmetadata || {};
-    const title = String(chosen.page.title || "").replace(/^File:/, "");
-    const artist = String(md.Artist?.value || "").replace(/<[^>]+>/g, "");
-    const license = String(
-      md.LicenseShortName?.value ||
-      md.License?.value ||
-      "See source"
-    ).replace(/<[^>]+>/g, "");
+    const contentType =
+      (response.headers.get("content-type") || "image/jpeg")
+        .split(";")[0]
+        .trim();
 
-    const source =
-      "https://commons.wikimedia.org/wiki/" +
-      encodeURIComponent(chosen.page.title);
+    const bytes = Buffer.from(await response.arrayBuffer());
+
+    if (!bytes.length) {
+      throw new Error("Pollinations returned an empty image.");
+    }
 
     return res.status(200).json({
-      mimeType: mime,
-      imageBase64,
-      source,
-      title,
-      artist,
-      license
+      mimeType: contentType,
+      imageBase64: bytes.toString("base64"),
+      source: "Pollinations AI",
+      title: "AI-generated scene image",
+      artist: "Pollinations AI",
+      license: "See Pollinations terms and the selected model/provider terms"
     });
   } catch (e) {
-    console.error(e);
+    console.error("Pollinations image error:", e);
+
     return res.status(500).json({
-      error: e.message || "Free image search failed"
+      error: e?.message || "Image generation failed"
     });
   }
 }
