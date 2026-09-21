@@ -80,14 +80,9 @@ attractive poses of girls or women. Prefer anatomy illustrations, doctors, patie
 in normal medical settings, or neutral clinical visuals when a person is not necessary.
 `;
 
-    // Try several currently available FREE OpenRouter models in sequence.
-    // If one provider/model is overloaded (429/5xx), automatically try the next.
-    const models = [
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
-      "arcee-ai/trinity-large-thinking:free",
-      "arcee-ai/trinity-large-preview:free",
-      "openrouter/free"
-    ];
+    // Use OpenRouter's current free-model router. It selects an available
+    // free model and can route requests requiring structured JSON output.
+    const models = ["openrouter/free"];
 
     let raw = "";
     let lastError = null;
@@ -110,7 +105,10 @@ in normal medical settings, or neutral clinical visuals when a person is not nec
               { role: "user", content: userPrompt.trim() }
             ],
             temperature: 0.7,
-            max_tokens: 3500
+            max_tokens: 3500,
+            response_format: {
+              type: "json_object"
+            }
           })
         });
 
