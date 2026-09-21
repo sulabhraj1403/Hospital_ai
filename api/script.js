@@ -80,40 +80,78 @@ attractive poses of girls or women. Prefer anatomy illustrations, doctors, patie
 in normal medical settings, or neutral clinical visuals when a person is not necessary.
 `;
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://major-hospital-ai-video.vercel.app",
-        "X-Title": "Major Hospital AI Video Creator"
-      },
-      body: JSON.stringify({
-        model: "openrouter/free",
-        messages: [
-          { role: "system", content: systemPrompt.trim() },
-          { role: "user", content: userPrompt.trim() }
-        ],
-        temperature: 0.7,
-        max_tokens: 3500
-      })
-    });
+    // Try several currently available FREE OpenRouter models in sequence.
+    // If one provider/model is overloaded (429/5xx), automatically try the next.
+    const models = [
+      "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "arcee-ai/trinity-large-thinking:free",
+      "arcee-ai/trinity-large-preview:free",
+      "openrouter/free"
+    ];
 
-    const raw = await response.text();
+    let raw = "";
+    let lastError = null;
+    let usedModel = null;
 
-    if (!response.ok) {
-      let detail = raw;
+    for (const model of models) {
       try {
-        const parsed = JSON.parse(raw);
-        detail =
-          parsed?.error?.message ||
-          parsed?.error ||
-          parsed?.message ||
-          raw;
-      } catch {}
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://major-hospital-ai-video.vercel.app",
+            "X-Title": "Major Hospital AI Video Creator"
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt.trim() },
+              { role: "user", content: userPrompt.trim() }
+            ],
+            temperature: 0.7,
+            max_tokens: 3500
+          })
+        });
 
-      throw new Error(`OpenRouter ${response.status}: ${detail}`);
+        raw = await response.text();
+
+        if (response.ok) {
+          usedModel = model;
+          break;
+        }
+
+        let detail = raw;
+        try {
+          const parsed = JSON.parse(raw);
+          detail =
+            parsed?.error?.message ||
+            parsed?.error ||
+            parsed?.message ||
+            raw;
+        } catch {}
+
+        lastError = new Error(`${response.status}: ${detail}`);
+        console.warn(`OpenRouter model failed: ${model}`, lastError.message);
+
+        // Retry another free model for provider overload, rate limits,
+        // temporary server errors, or model unavailability.
+        if (![400, 401, 403, 404, 408, 409, 429, 500, 502, 503, 504].includes(response.status)) {
+          throw lastError;
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`OpenRouter request failed: ${model}`, err?.message || err);
+      }
     }
+
+    if (!usedModel) {
+      throw new Error(
+        `All free AI models are temporarily unavailable. Last error: ${lastError?.message || "unknown error"}`
+      );
+    }
+
+    console.log("OpenRouter model used:", usedModel);
 
     let data;
     try {
