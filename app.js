@@ -129,7 +129,8 @@ $("generate").onclick=async()=>{
     const plan=await jsonPost("/api/script",{
       topic,
       language,
-      count,
+      sceneCount:count,
+      secondsPerScene:seconds,
       hospital:"Major Hospital, Dhaka, East Champaran"
     });
 
@@ -141,7 +142,13 @@ $("generate").onclick=async()=>{
 
       status(`Generating scene ${i+1} of ${scenes.length}…`,5+Math.round(i/scenes.length*50));
 
-      const r=await jsonPost("/api/image",{prompt:scenes[i].imagePrompt});
+      const imagePrompt =
+        scenes[i].visualPrompt ||
+        scenes[i].imagePrompt ||
+        scenes[i].visual ||
+        "";
+      if(!imagePrompt) throw Error(`Scene ${i+1} has no image prompt.`);
+      const r=await jsonPost("/api/image",{prompt:imagePrompt});
       scenes[i].image=dataUrl(r.mimeType,r.imageBase64);
 
       const div=document.createElement("div");
