@@ -14,8 +14,28 @@ function status(t,p=null){$("status").textContent=t;if(p!==null)$("bar").style.w
 function dataUrl(mime,b64){return `data:${mime};base64,${b64}`}
 
 async function jsonPost(url,body){
-  const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  const j=await r.json(); if(!r.ok) throw new Error(j.error||"Server error"); return j;
+  const r=await fetch(url,{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Accept":"application/json"
+    },
+    body:JSON.stringify(body)
+  });
+
+  const text=await r.text();
+  let j=null;
+
+  try{
+    j=text ? JSON.parse(text) : null;
+  }catch{
+    throw new Error(
+      `API ${r.status} returned a non-JSON response: ${text.slice(0,300) || "empty response"}`
+    );
+  }
+
+  if(!r.ok) throw new Error(j?.error || `API request failed (${r.status})`);
+  return j;
 }
 
 async function getMusic(topic){
@@ -134,7 +154,8 @@ $("generate").onclick=async()=>{
     const plan=await jsonPost("/api/script",{
       topic,
       language,
-      count,
+      sceneCount:count,
+      secondsPerScene:seconds,
       hospital:"Major Hospital, Dhaka, East Champaran"
     });
 
