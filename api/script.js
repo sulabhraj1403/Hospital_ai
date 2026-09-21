@@ -74,7 +74,10 @@ understood.
 
 For each visualPrompt, describe a realistic, medically appropriate vertical
 9:16 scene. Do not put text, logos, hospital names, phone numbers, or watermarks
-inside the generated image.
+inside the generated image. Use professional, clinically appropriate people and clothing.
+Do not use provocative, sexually suggestive, glamour, revealing, or unnecessarily
+attractive poses of girls or women. Prefer anatomy illustrations, doctors, patients
+in normal medical settings, or neutral clinical visuals when a person is not necessary.
 `;
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
