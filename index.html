@@ -15,7 +15,7 @@
 <main>
   <section class="card">
     <h1>Create a medical video</h1>
-    <p class="muted">Gemini creates the script and scene images. The website adds licensed background music and exports a vertical MP4.</p>
+    <p class="muted">OpenRouter creates the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
 
     <label>Topic</label>
     <textarea id="topic" rows="3" placeholder="Example: Knee pain — common causes and when to see an orthopaedic doctor"></textarea>
@@ -64,8 +64,8 @@
   <div class="modalBox">
     <button id="closeSettings" class="close">×</button>
     <h2>Website settings</h2>
-    <p>Gemini API key is configured on the server. You do not enter it for each video.</p>
-    <p class="muted">For deployment, set <code>GEMINI_API_KEY</code> once in your hosting provider's environment variables.</p>
+    <p>AI API keys are configured on the server. You do not enter them for each video.</p>
+    <p class="muted">For deployment, set <code>OPENROUTER_API_KEY</code> and <code>POLLINATIONS_API_KEY</code> in your hosting provider's environment variables.</p>
     <label>Hospital end-card text</label>
     <input id="hospitalText" value="Major Hospital • Dhaka, East Champaran">
     <button id="saveSettings" class="primary">Save</button>

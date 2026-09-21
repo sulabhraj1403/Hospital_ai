@@ -1,5 +1,5 @@
 // Replace the existing app.js with this version.
-// The only functional change requested is a mandatory final hospital end card.
+// Includes a mandatory final hospital end card and browser-side FFmpeg video assembly.
 // It is created locally in the browser, so it does not use Gemini quota.
 
 const $=id=>document.getElementById(id);
@@ -70,7 +70,12 @@ function makeEndCard(){
 }
 
 async function makeVideo(images, seconds, captions, musicBlob){
-  const {FFmpeg}=window.FFmpegWASM, {fetchFile,toBlobURL}=window.FFmpegUtil;
+  const FFmpegNS = window.FFmpegWASM || window.FFmpeg;
+  const FFmpegUtilNS = window.FFmpegUtil;
+  if (!FFmpegNS?.FFmpeg) throw new Error("FFmpeg library failed to load. Please refresh the page.");
+  if (!FFmpegUtilNS?.fetchFile || !FFmpegUtilNS?.toBlobURL) throw new Error("FFmpeg utility library failed to load. Please refresh the page.");
+  const {FFmpeg}=FFmpegNS;
+  const {fetchFile,toBlobURL}=FFmpegUtilNS;
   const ff=new FFmpeg();
   ff.on("progress",({progress})=>status("Assembling MP4…",80+Math.round(progress*19)));
   const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
@@ -141,7 +146,7 @@ $("generate").onclick=async()=>{
 
       status(`Generating scene ${i+1} of ${scenes.length}…`,5+Math.round(i/scenes.length*50));
 
-      const r=await jsonPost("/api/image",{prompt:scenes[i].imagePrompt});
+      const r=await jsonPost("/api/image",{prompt:scenes[i].visualPrompt || scenes[i].imagePrompt});
       scenes[i].image=dataUrl(r.mimeType,r.imageBase64);
 
       const div=document.createElement("div");
