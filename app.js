@@ -70,7 +70,7 @@ function makeEndCard(){
 }
 
 async function makeVideo(images, seconds, captions, musicBlob){
-  const {FFmpeg}=window.FFmpeg, {fetchFile,toBlobURL}=window.FFmpegUtil;
+  const {FFmpeg}=window.FFmpegWASM, {fetchFile,toBlobURL}=window.FFmpegUtil;
   const ff=new FFmpeg();
   ff.on("progress",({progress})=>status("Assembling MP4…",80+Math.round(progress*19)));
   const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
@@ -129,8 +129,7 @@ $("generate").onclick=async()=>{
     const plan=await jsonPost("/api/script",{
       topic,
       language,
-      sceneCount:count,
-      secondsPerScene:seconds,
+      count,
       hospital:"Major Hospital, Dhaka, East Champaran"
     });
 
@@ -142,13 +141,7 @@ $("generate").onclick=async()=>{
 
       status(`Generating scene ${i+1} of ${scenes.length}…`,5+Math.round(i/scenes.length*50));
 
-      const imagePrompt =
-        scenes[i].visualPrompt ||
-        scenes[i].imagePrompt ||
-        scenes[i].visual ||
-        "";
-      if(!imagePrompt) throw Error(`Scene ${i+1} has no image prompt.`);
-      const r=await jsonPost("/api/image",{prompt:imagePrompt});
+      const r=await jsonPost("/api/image",{prompt:scenes[i].imagePrompt});
       scenes[i].image=dataUrl(r.mimeType,r.imageBase64);
 
       const div=document.createElement("div");
