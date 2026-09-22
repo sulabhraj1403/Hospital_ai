@@ -12,12 +12,14 @@ export default async function handler(req, res) {
 
   try {
 
-    const {
-      topic,
-      language = "Hindi",
-      sceneCount = 6,
-      secondsPerScene = 5
-    } = req.body || {};
+    const body = req.body || {};
+    const topic = body.topic;
+    const language = body.language ?? "Hindi";
+
+    // Accept both the current names and the older client names so the
+    // endpoint remains compatible with previous deployed versions.
+    const sceneCount = body.sceneCount ?? body.count ?? 6;
+    const secondsPerScene = body.secondsPerScene ?? body.seconds ?? 5;
 
 
     if (!topic || !String(topic).trim()) {
@@ -153,7 +155,8 @@ is not necessary.
                   "application/json",
 
                 "HTTP-Referer":
-                  "https://major-hospital-ai-video.vercel.app",
+                  (req.headers?.origin ||
+                   `https://${req.headers?.host || process.env.VERCEL_URL || "major-hospital-ai-video.vercel.app"}`),
 
                 "X-Title":
                   "Major Hospital AI Video Creator"
@@ -437,7 +440,7 @@ is not necessary.
               scene?.visual ||
               scene?.imagePrompt ||
               ""
-            )
+            ).trim()
         })
       );
 
