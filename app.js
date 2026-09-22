@@ -83,7 +83,10 @@ async function makeVideo(images, seconds, captions, musicBlob){
 
   const ff=new FFmpeg();
   ff.on("log",({message})=>console.log("[FFmpeg]",message));
-  ff.on("progress",({progress})=>status("Assembling MP4…",80+Math.round(progress*19)));
+  ff.on("progress",({progress})=>{
+    const pct=Math.max(0,Math.min(100,Math.round(progress*100)));
+    status(`Encoding MP4: ${pct}%`,80+Math.round(progress*19));
+  });
 
   // ESM core + WASM are converted to local blob URLs. The root FFmpeg worker
   // is served from this Vercel site, so it is same-origin with the webpage.
@@ -99,7 +102,7 @@ async function makeVideo(images, seconds, captions, musicBlob){
     classWorkerURL:`${window.location.origin}/static/ffmpeg/worker.js`
   });
 
-  // FFmpeg needs real image files. Convert every frame to a standard 1080x1920 PNG.
+  // FFmpeg needs real image files. Convert every frame to a lighter standard 720x1280 PNG.
   const frameFiles=[];
   for(let i=0;i<images.length;i++){
     const img=new Image();
@@ -111,17 +114,17 @@ async function makeVideo(images, seconds, captions, musicBlob){
     });
 
     const canvas=document.createElement("canvas");
-    canvas.width=1080;
-    canvas.height=1920;
+    canvas.width=720;
+    canvas.height=1280;
     const ctx=canvas.getContext("2d");
     ctx.fillStyle="#ffffff";
-    ctx.fillRect(0,0,1080,1920);
+    ctx.fillRect(0,0,720,1280);
 
-    const scale=Math.min(1080/img.naturalWidth,1920/img.naturalHeight);
+    const scale=Math.min(720/img.naturalWidth,1280/img.naturalHeight);
     const w=Math.round(img.naturalWidth*scale);
     const h=Math.round(img.naturalHeight*scale);
-    const x=Math.round((1080-w)/2);
-    const y=Math.round((1920-h)/2);
+    const x=Math.round((720-w)/2);
+    const y=Math.round((1280-h)/2);
     ctx.drawImage(img,x,y,w,h);
 
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
@@ -149,17 +152,20 @@ async function makeVideo(images, seconds, captions, musicBlob){
     args.push("-map",`${frameFiles.length}:a:0`,"-shortest");
 
   args.push(
-    "-r","30",
+    "-r","24",
     "-c:v","libx264",
-    "-preset","veryfast",
+    "-preset","ultrafast",
+    "-crf","28",
     "-pix_fmt","yuv420p",
     "-movflags","+faststart",
     "video.mp4"
   );
 
+  status("Encoding MP4: processing…",90);
   const code=await ff.exec(args);
   if(code!==0) throw new Error(`FFmpeg failed while creating the MP4 (code ${code}).`);
 
+  status("Finalizing MP4…",98);
   const data=await ff.readFile("video.mp4");
   return new Blob([data.buffer],{type:"video/mp4"});
 }
@@ -184,14 +190,10 @@ $("generate").onclick=async()=>{
 
     status("Building script from medical templates…",3);
 
-    const plan=await jsonPost("/api/script",{
-      topic,
-      language,
-      sceneCount:count,
-      secondsPerScene:seconds,
-      hospital:"Major Hospital, Dhaka, East Champaran"
-    });
+    if(typeof window.buildLocalMedicalPlan!=="function")
+      throw new Error("Local medical script engine did not load. Refresh the page.");
 
+    const plan=window.buildLocalMedicalPlan(topic,language,count);
     scenes=plan.scenes||[];
     $("scenesCard").classList.remove("hidden");
 
@@ -231,7 +233,7 @@ $("generate").onclick=async()=>{
       }
     }
 
-    status("Building vertical MP4…",80);
+    status("Starting standard-quality MP4 encoding…",80);
 
     const blob=await makeVideo(
       scenes.map(x=>x.image),
