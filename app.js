@@ -309,7 +309,6 @@ async function makeVideo(
   captions,
   musicBlob
 ) {
-
   const FFmpegNS =
     window.FFmpegWASM ||
     window.FFmpeg;
@@ -333,11 +332,7 @@ async function makeVideo(
   }
 
   const { FFmpeg } = FFmpegNS;
-
-  const {
-    fetchFile,
-    toBlobURL
-  } = FFmpegUtilNS;
+  const { fetchFile, toBlobURL } = FFmpegUtilNS;
 
   const ff = new FFmpeg();
 
@@ -351,51 +346,99 @@ async function makeVideo(
     }
   );
 
-  /*
-    FFmpeg 0.12.10
-  */
-
-  const coreBase =
-    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-
-  const ffmpegWorker =
-    "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js";
-
-  /*
-    IMPORTANT:
-    Convert the worker itself to a Blob URL.
-    This prevents the browser from trying to
-    create a Worker directly from jsDelivr.
-  */
-
-  const [
-    coreURL,
-    wasmURL,
-    classWorkerURL
-  ] = await Promise.all([
-
-    toBlobURL(
-      `${coreBase}/ffmpeg-core.js`,
-      "text/javascript"
-    ),
-
-    toBlobURL(
-      `${coreBase}/ffmpeg-core.wasm`,
-      "application/wasm"
-    ),
-
-    toBlobURL(
-      ffmpegWorker,
-      "text/javascript"
-    )
-
-  ]);
+  const base =
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
 
   await ff.load({
-    coreURL,
-    wasmURL,
-    classWorkerURL
+    coreURL: await toBlobURL(
+      `${base}/ffmpeg-core.js`,
+      "text/javascript"
+    ),
+
+    wasmURL: await toBlobURL(
+      `${base}/ffmpeg-core.wasm`,
+      "application/wasm"
+    )
   });
+
+  for (let i = 0; i < images.length; i++) {
+    await ff.writeFile(
+      `img${i}.png`,
+      await fetchFile(images[i])
+    );
+  }
+
+  const args = [];
+
+  for (let i = 0; i < images.length; i++) {
+    args.push(
+      "-loop",
+      "1",
+      "-t",
+      String(seconds),
+      "-i",
+      `img${i}.png`
+    );
+  }
+
+  if (musicBlob) {
+    await ff.writeFile(
+      "music",
+      await fetchFile(musicBlob)
+    );
+
+    args.push(
+      "-stream_loop",
+      "-1",
+      "-i",
+      "music"
+    );
+  }
+
+  args.push(
+    "-filter_complex",
+    `concat=n=${images.length}:v=1:a=0,format=yuv420p[v]`
+  );
+
+  if (musicBlob) {
+    args.push(
+      "-map",
+      "[v]",
+      "-map",
+      `${images.length}:a:0`,
+      "-shortest"
+    );
+  } else {
+    args.push(
+      "-map",
+      "[v]"
+    );
+  }
+
+  args.push(
+    "-r",
+    "30",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "video.mp4"
+  );
+
+  await ff.exec(args);
+
+  const data =
+    await ff.readFile("video.mp4");
+
+  return new Blob(
+    [data.buffer],
+    { type: "video/mp4" }
+  );
+}
 
   /* ---------------- WRITE IMAGES ---------------- */
 
