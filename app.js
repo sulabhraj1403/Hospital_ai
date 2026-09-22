@@ -70,47 +70,96 @@ function makeEndCard(){
 }
 
 async function makeVideo(images, seconds, captions, musicBlob){
-  const FFmpegNS = window.FFmpegWASM || window.FFmpeg;
-  const FFmpegUtilNS = window.FFmpegUtil;
-  if (!FFmpegNS?.FFmpeg) throw new Error("FFmpeg library failed to load. Please refresh the page.");
-  if (!FFmpegUtilNS?.fetchFile || !FFmpegUtilNS?.toBlobURL) throw new Error("FFmpeg utility library failed to load. Please refresh the page.");
+  // Use the ESM build. This avoids the UMD build's generated 814.ffmpeg.js
+  // worker, which browsers can reject as cross-origin.
+  const FFmpegNS = await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");
+  const FFmpegUtilNS = await import("https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js");
+
   const {FFmpeg}=FFmpegNS;
   const {fetchFile,toBlobURL}=FFmpegUtilNS;
+  if(!FFmpeg || !fetchFile || !toBlobURL){
+    throw new Error("FFmpeg library could not be loaded. Please refresh the page.");
+  }
+
   const ff=new FFmpeg();
+  ff.on("log",({message})=>console.log("[FFmpeg]",message));
   ff.on("progress",({progress})=>status("Assembling MP4…",80+Math.round(progress*19)));
-  const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-  const ffmpegPackage="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd";
+
+  // ESM core + WASM are converted to local blob URLs. The root FFmpeg worker
+  // is served from this Vercel site, so it is same-origin with the webpage.
+  const coreBase="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+  const [coreURL,wasmURL]=await Promise.all([
+    toBlobURL(`${coreBase}/ffmpeg-core.js`,"text/javascript"),
+    toBlobURL(`${coreBase}/ffmpeg-core.wasm`,"application/wasm")
+  ]);
+
   await ff.load({
-    coreURL:await toBlobURL(base+"/ffmpeg-core.js","text/javascript"),
-    wasmURL:await toBlobURL(base+"/ffmpeg-core.wasm","application/wasm"),
-    // The UMD build normally creates 814.ffmpeg.js from the CDN origin.
-    // Convert that worker script to a same-origin blob to avoid browser CORS blocking.
-    classWorkerURL:await toBlobURL(ffmpegPackage+"/814.ffmpeg.js","text/javascript")
+    coreURL,
+    wasmURL,
+    classWorkerURL:`${window.location.origin}/static/ffmpeg/worker.js`
   });
 
+  // FFmpeg needs real image files. Convert every frame to a standard 1080x1920 PNG.
+  const frameFiles=[];
   for(let i=0;i<images.length;i++){
-    await ff.writeFile(`img${i}.png`,await fetchFile(images[i]));
+    const img=new Image();
+    img.decoding="async";
+    img.src=images[i];
+    await new Promise((resolve,reject)=>{
+      img.onload=resolve;
+      img.onerror=()=>reject(new Error(`Could not load scene image ${i+1}.`));
+    });
+
+    const canvas=document.createElement("canvas");
+    canvas.width=1080;
+    canvas.height=1920;
+    const ctx=canvas.getContext("2d");
+    ctx.fillStyle="#ffffff";
+    ctx.fillRect(0,0,1080,1920);
+
+    const scale=Math.min(1080/img.naturalWidth,1920/img.naturalHeight);
+    const w=Math.round(img.naturalWidth*scale);
+    const h=Math.round(img.naturalHeight*scale);
+    const x=Math.round((1080-w)/2);
+    const y=Math.round((1920-h)/2);
+    ctx.drawImage(img,x,y,w,h);
+
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+    if(!blob) throw new Error(`Could not prepare scene image ${i+1}.`);
+    const filename=`img${i}.png`;
+    await ff.writeFile(filename,await fetchFile(blob));
+    frameFiles.push(filename);
   }
 
   const args=[];
-  for(let i=0;i<images.length;i++)
-    args.push("-loop","1","-t",String(seconds),"-i",`img${i}.png`);
+  for(const filename of frameFiles)
+    args.push("-loop","1","-t",String(seconds),"-i",filename);
 
   if(musicBlob){
     await ff.writeFile("music",await fetchFile(musicBlob));
     args.push("-stream_loop","-1","-i","music");
   }
 
-  args.push("-filter_complex",`concat=n=${images.length}:v=1:a=0,format=yuv420p[v]`);
+  args.push(
+    "-filter_complex",`concat=n=${frameFiles.length}:v=1:a=0,format=yuv420p[v]`,
+    "-map","[v]"
+  );
 
   if(musicBlob)
-    args.push("-map","[v]","-map",`${images.length}:a:0`,"-shortest");
-  else
-    args.push("-map","[v]");
+    args.push("-map",`${frameFiles.length}:a:0`,"-shortest");
 
-  args.push("-r","30","-c:v","libx264","-preset","veryfast","-movflags","+faststart","video.mp4");
+  args.push(
+    "-r","30",
+    "-c:v","libx264",
+    "-preset","veryfast",
+    "-pix_fmt","yuv420p",
+    "-movflags","+faststart",
+    "video.mp4"
+  );
 
-  await ff.exec(args);
+  const code=await ff.exec(args);
+  if(code!==0) throw new Error(`FFmpeg failed while creating the MP4 (code ${code}).`);
+
   const data=await ff.readFile("video.mp4");
   return new Blob([data.buffer],{type:"video/mp4"});
 }
@@ -138,7 +187,8 @@ $("generate").onclick=async()=>{
     const plan=await jsonPost("/api/script",{
       topic,
       language,
-      count,
+      sceneCount:count,
+      secondsPerScene:seconds,
       hospital:"Major Hospital, Dhaka, East Champaran"
     });
 
