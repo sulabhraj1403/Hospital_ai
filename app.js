@@ -83,10 +83,23 @@ async function makeVideo(images, seconds, captions, musicBlob){
 
   const ff=new FFmpeg();
   ff.on("log",({message})=>console.log("[FFmpeg]",message));
-  ff.on("progress",({progress})=>{
-    const pct=Math.max(0,Math.min(100,Math.round(progress*100)));
-    status(`Encoding MP4: ${pct}%`,80+Math.round(progress*19));
-  });
+  // ffmpeg.wasm documents progress as experimental and specifically notes
+  // that it may not work reliably for concat/image conversion. Use a
+  // visible processing progress animation instead of leaving the bar frozen.
+  let encodingProgress=80;
+  let encodingTimer=null;
+  const startEncodingProgress=()=>{
+    encodingProgress=80;
+    status("Encoding MP4: 80%",80);
+    encodingTimer=setInterval(()=>{
+      encodingProgress=Math.min(95,encodingProgress+1);
+      status(`Encoding MP4: ${encodingProgress}%`,encodingProgress);
+    },500);
+  };
+  const finishEncodingProgress=()=>{
+    if(encodingTimer){clearInterval(encodingTimer);encodingTimer=null;}
+    status("Encoding MP4: 98%",98);
+  };
 
   // ESM core + WASM are converted to local blob URLs. The root FFmpeg worker
   // is served from this Vercel site, so it is same-origin with the webpage.
@@ -161,8 +174,13 @@ async function makeVideo(images, seconds, captions, musicBlob){
     "video.mp4"
   );
 
-  status("Encoding MP4: processing…",90);
-  const code=await ff.exec(args);
+  startEncodingProgress();
+  let code;
+  try {
+    code=await ff.exec(args);
+  } finally {
+    finishEncodingProgress();
+  }
   if(code!==0) throw new Error(`FFmpeg failed while creating the MP4 (code ${code}).`);
 
   status("Finalizing MP4…",98);
@@ -186,7 +204,7 @@ $("generate").onclick=async()=>{
 
     const count=+$("sceneCount").value;
     const seconds=+$("seconds").value;
-    const language=$("language").value;
+    const language="English";
 
     status("Building script from medical templates…",3);
 

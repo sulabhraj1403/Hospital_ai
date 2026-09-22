@@ -15,7 +15,7 @@
 <main>
   <section class="card">
     <h1>Create a medical video</h1>
-    <p class="muted">A built-in medical template engine creates the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
+    <p class="muted">Medical templates create the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
 
     <label>Topic</label>
     <textarea id="topic" rows="3" placeholder="Example: Knee pain — common causes and when to see an orthopaedic doctor"></textarea>
@@ -23,7 +23,7 @@
     <div class="grid">
       <div>
         <label>Language</label>
-        <select id="language"><option>Hindi</option><option>English</option><option>Hindi + English</option></select>
+        <select id="language"><option selected>English</option></select>
       </div>
       <div>
         <label>Scenes</label>
@@ -64,14 +64,15 @@
   <div class="modalBox">
     <button id="closeSettings" class="close">×</button>
     <h2>Website settings</h2>
-    <p>No script-generation AI is required. Pollinations is used only for scene images.</p>
-    <p class="muted">For deployment, only <code>POLLINATIONS_API_KEY</code> is required for AI-generated scene images.</p>
+    <p>The script uses local medical templates. Pollinations AI is used for scene images.</p>
+    <p class="muted">For deployment, set <code>POLLINATIONS_API_KEY</code> in your hosting provider's environment variables.</p>
     <label>Hospital end-card text</label>
     <input id="hospitalText" value="Major Hospital • Dhaka, East Champaran">
     <button id="saveSettings" class="primary">Save</button>
   </div>
 </div>
 
+<script src="/script-engine.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
