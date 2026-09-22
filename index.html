@@ -9,42 +9,29 @@
 <body>
 <header class="topbar">
   <div><strong>Major Hospital</strong><span>AI Video Creator</span></div>
-  <button id="settingsBtn" class="ghost" type="button">Settings</button>
+  <button id="settingsBtn" class="ghost">Settings</button>
 </header>
 
 <main>
   <section class="card">
     <h1>Create a medical video</h1>
-    <p class="muted">OpenRouter creates the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
+    <p class="muted">A built-in medical template engine creates the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
 
-    <label for="topic">Topic</label>
+    <label>Topic</label>
     <textarea id="topic" rows="3" placeholder="Example: Knee pain — common causes and when to see an orthopaedic doctor"></textarea>
 
     <div class="grid">
       <div>
-        <label for="language">Language</label>
-        <select id="language">
-          <option>Hindi</option>
-          <option>English</option>
-          <option>Hindi + English</option>
-        </select>
+        <label>Language</label>
+        <select id="language"><option>Hindi</option><option>English</option><option>Hindi + English</option></select>
       </div>
       <div>
-        <label for="sceneCount">Scenes</label>
-        <select id="sceneCount">
-          <option>5</option>
-          <option selected>6</option>
-          <option>7</option>
-        </select>
+        <label>Scenes</label>
+        <select id="sceneCount"><option>5</option><option selected>6</option><option>7</option></select>
       </div>
       <div>
-        <label for="seconds">Seconds / scene</label>
-        <select id="seconds">
-          <option>4</option>
-          <option selected>5</option>
-          <option>6</option>
-          <option>7</option>
-        </select>
+        <label>Seconds / scene</label>
+        <select id="seconds"><option>4</option><option selected>5</option><option>6</option><option>7</option></select>
       </div>
     </div>
 
@@ -53,10 +40,10 @@
       <label class="check"><input id="captions" type="checkbox" checked> Add captions</label>
     </div>
 
-    <button id="generate" class="primary" type="button">Generate Video</button>
-    <button id="stop" class="danger hidden" type="button">Stop</button>
+    <button id="generate" class="primary">Generate Video</button>
+    <button id="stop" class="danger hidden">Stop</button>
 
-    <div id="status" class="status" aria-live="polite">Ready.</div>
+    <div id="status" class="status">Ready.</div>
     <div class="progress"><div id="bar"></div></div>
   </section>
 
@@ -68,27 +55,23 @@
   <section id="resultCard" class="card hidden">
     <h2>Final video</h2>
     <video id="preview" controls playsinline></video>
-    <a id="download" class="primary download" download="major-hospital-video.mp4">Download MP4</a>
+    <a id="download" class="primary download">Download MP4</a>
     <div id="credits" class="credits"></div>
   </section>
 </main>
 
 <div id="settings" class="modal hidden">
   <div class="modalBox">
-    <button id="closeSettings" class="close" type="button" aria-label="Close settings">×</button>
+    <button id="closeSettings" class="close">×</button>
     <h2>Website settings</h2>
-    <p>AI API keys are configured on the server. You do not enter them for each video.</p>
-    <p class="muted">For deployment, set <code>OPENROUTER_API_KEY</code> and <code>POLLINATIONS_API_KEY</code> in your hosting provider's environment variables.</p>
-    <label for="hospitalText">Hospital end-card text</label>
+    <p>No script-generation AI is required. Pollinations is used only for scene images.</p>
+    <p class="muted">For deployment, only <code>POLLINATIONS_API_KEY</code> is required for AI-generated scene images.</p>
+    <label>Hospital end-card text</label>
     <input id="hospitalText" value="Major Hospital • Dhaka, East Champaran">
-    <button id="saveSettings" class="primary" type="button">Save</button>
+    <button id="saveSettings" class="primary">Save</button>
   </div>
 </div>
 
-<!-- Keep the ffmpeg.wasm library and its core versions coherent.
-     The 0.12.10 ffmpeg package is paired with the 0.12.6 core. -->
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

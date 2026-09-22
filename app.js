@@ -182,7 +182,7 @@ $("generate").onclick=async()=>{
     const seconds=+$("seconds").value;
     const language=$("language").value;
 
-    status("Creating script and scene plan…",3);
+    status("Building script from medical templates…",3);
 
     const plan=await jsonPost("/api/script",{
       topic,
