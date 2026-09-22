@@ -1,5 +1,5 @@
 // Replace the existing app.js with this version.
-// Includes a mandatory final hospital end card and browser-side FFmpeg video assembly.
+// The only functional change requested is a mandatory final hospital end card.
 // It is created locally in the browser, so it does not use Gemini quota.
 
 const $=id=>document.getElementById(id);
@@ -13,41 +13,9 @@ $("hospitalText").value=localStorage.hospitalText||"Major Hospital • Dhaka, Ea
 function status(t,p=null){$("status").textContent=t;if(p!==null)$("bar").style.width=p+"%"}
 function dataUrl(mime,b64){return `data:${mime};base64,${b64}`}
 
-function errorText(value){
-  if(value == null) return "";
-  if(typeof value === "string") return value;
-  if(value instanceof Error) return value.message || String(value);
-  try{
-    const s=JSON.stringify(value);
-    return s && s !== "{}" ? s : String(value);
-  }catch{
-    return String(value);
-  }
-}
-
 async function jsonPost(url,body){
-  const r=await fetch(url,{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Accept":"application/json"
-    },
-    body:JSON.stringify(body)
-  });
-
-  const text=await r.text();
-  let j=null;
-
-  try{
-    j=text ? JSON.parse(text) : null;
-  }catch{
-    throw new Error(
-      `API ${r.status} returned a non-JSON response: ${text.slice(0,300) || "empty response"}`
-    );
-  }
-
-  if(!r.ok) throw new Error(errorText(j?.error) || `API request failed (${r.status})`);
-  return j;
+  const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json(); if(!r.ok) throw new Error(j.error||"Server error"); return j;
 }
 
 async function getMusic(topic){
@@ -102,18 +70,22 @@ function makeEndCard(){
 }
 
 async function makeVideo(images, seconds, captions, musicBlob){
-  const FFmpegNS = window.FFmpegWASM || window.FFmpeg;
-  const FFmpegUtilNS = window.FFmpegUtil;
-  if (!FFmpegNS?.FFmpeg) throw new Error("FFmpeg library failed to load. Please refresh the page.");
-  if (!FFmpegUtilNS?.fetchFile || !FFmpegUtilNS?.toBlobURL) throw new Error("FFmpeg utility library failed to load. Please refresh the page.");
-  const {FFmpeg}=FFmpegNS;
-  const {fetchFile,toBlobURL}=FFmpegUtilNS;
+  const {FFmpeg}=window.FFmpeg, {fetchFile,toBlobURL}=window.FFmpegUtil;
   const ff=new FFmpeg();
   ff.on("progress",({progress})=>status("Assembling MP4…",80+Math.round(progress*19)));
-  const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
+  const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+
+  const [coreURL,wasmURL,workerURL]=await Promise.all([
+    toBlobURL(base+"/ffmpeg-core.js","text/javascript"),
+    toBlobURL(base+"/ffmpeg-core.wasm","application/wasm"),
+    toBlobURL(base+"/ffmpeg-core.worker.js","text/javascript")
+  ]);
+
   await ff.load({
-    coreURL:await toBlobURL(base+"/ffmpeg-core.js","text/javascript"),
-    wasmURL:await toBlobURL(base+"/ffmpeg-core.wasm","application/wasm")
+    coreURL,
+    wasmURL,
+    workerURL,
+    classWorkerURL:"/static/ffmpeg/worker.js"
   });
 
   for(let i=0;i<images.length;i++){
@@ -166,8 +138,7 @@ $("generate").onclick=async()=>{
     const plan=await jsonPost("/api/script",{
       topic,
       language,
-      sceneCount:count,
-      secondsPerScene:seconds,
+      count,
       hospital:"Major Hospital, Dhaka, East Champaran"
     });
 
@@ -179,7 +150,7 @@ $("generate").onclick=async()=>{
 
       status(`Generating scene ${i+1} of ${scenes.length}…`,5+Math.round(i/scenes.length*50));
 
-      const r=await jsonPost("/api/image",{prompt:scenes[i].visualPrompt || scenes[i].imagePrompt});
+      const r=await jsonPost("/api/image",{prompt:scenes[i].imagePrompt});
       scenes[i].image=dataUrl(r.mimeType,r.imageBase64);
 
       const div=document.createElement("div");
