@@ -1,14 +1,13 @@
-// Major Hospital AI Video Creator
-// Browser-side FFmpeg video assembly.
-// Uses /api/script for OpenRouter and /api/image for Pollinations.
-
 const $ = id => document.getElementById(id);
 
 let stopped = false;
 let scenes = [];
 let musicInfo = null;
 
-$("settingsBtn").onclick = () => $("settings").classList.remove("hidden");
+/* ---------------- SETTINGS ---------------- */
+
+$("settingsBtn").onclick = () =>
+  $("settings").classList.remove("hidden");
 
 $("closeSettings").onclick = () =>
   $("settings").classList.add("hidden");
@@ -22,16 +21,20 @@ $("hospitalText").value =
   localStorage.hospitalText ||
   "Major Hospital • Dhaka, East Champaran";
 
+/* ---------------- HELPERS ---------------- */
+
 function status(t, p = null) {
   $("status").textContent = t;
-  if (p !== null) $("bar").style.width = p + "%";
+
+  if (p !== null) {
+    $("bar").style.width = p + "%";
+  }
 }
 
 function dataUrl(mime, b64) {
   return `data:${mime};base64,${b64}`;
 }
 
-// Convert any API error into a readable string.
 function errorText(value) {
   if (value == null) return "";
 
@@ -51,52 +54,61 @@ function errorText(value) {
   }
 }
 
-// Safe API POST.
-// Does NOT assume the server response is JSON.
+/*
+  Sends JSON and safely handles both JSON and plain-text
+  responses from Vercel.
+*/
 async function jsonPost(url, body) {
   const r = await fetch(url, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json"
+      "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
   });
 
   const text = await r.text();
 
-  let j = null;
+  let data = null;
 
   try {
-    j = text ? JSON.parse(text) : null;
+    data = text ? JSON.parse(text) : null;
   } catch {
-    throw new Error(
-      `API ${r.status} returned a non-JSON response: ${
-        text.slice(0, 300) || "empty response"
-      }`
-    );
+    data = text;
   }
 
   if (!r.ok) {
+    let message = "";
+
+    if (data && typeof data === "object") {
+      message =
+        data.error ||
+        data.message ||
+        data.details ||
+        "";
+    } else {
+      message = String(data || "");
+    }
+
     throw new Error(
-      errorText(j?.error) ||
-      `API request failed (${r.status})`
+      message ||
+      `Server error (${r.status})`
     );
   }
 
-  return j;
+  return data;
 }
 
-
-// ---------------------------------------------------------
-// MUSIC
-// ---------------------------------------------------------
+/* ---------------- MUSIC ---------------- */
 
 async function getMusic(topic) {
-  const q = encodeURIComponent(`instrumental music ${topic}`);
+  const q = encodeURIComponent(
+    `instrumental music ${topic}`
+  );
 
   const api =
-    `https://commons.wikimedia.org/w/api.php?action=query` +
+    `https://commons.wikimedia.org/w/api.php` +
+    `?action=query` +
     `&generator=search` +
     `&gsrsearch=${q}` +
     `&gsrnamespace=6` +
@@ -107,9 +119,16 @@ async function getMusic(topic) {
     `&origin=*`;
 
   try {
-    const j = await fetch(api).then(r => r.json());
+    const response = await fetch(api);
 
-    const pages = Object.values(j.query?.pages || {});
+    if (!response.ok) {
+      return null;
+    }
+
+    const j = await response.json();
+
+    const pages =
+      Object.values(j.query?.pages || {});
 
     const audio = pages.find(p =>
       /\.(mp3|ogg|oga|wav)$/i.test(
@@ -117,16 +136,28 @@ async function getMusic(topic) {
       )
     );
 
-    if (!audio) return null;
+    if (!audio) {
+      return null;
+    }
 
     const ii = audio.imageinfo[0];
     const md = ii.extmetadata || {};
 
     return {
       url: ii.url,
-      title: md.ObjectName?.value || audio.title,
-      artist: md.Artist?.value || "",
-      license: md.LicenseShortName?.value || "See source",
+
+      title:
+        md.ObjectName?.value ||
+        audio.title,
+
+      artist:
+        md.Artist?.value ||
+        "",
+
+      license:
+        md.LicenseShortName?.value ||
+        "See source",
+
       source:
         "https://commons.wikimedia.org/wiki/" +
         encodeURIComponent(
@@ -134,41 +165,40 @@ async function getMusic(topic) {
         )
     };
 
-  } catch (e) {
+  } catch {
     return null;
   }
 }
-
 
 async function blobFromUrl(url) {
   const r = await fetch(url);
 
   if (!r.ok) {
-    throw Error("Music download failed");
+    throw new Error("Music download failed");
   }
 
   return await r.blob();
 }
 
-
-// ---------------------------------------------------------
-// END CARD
-// ---------------------------------------------------------
+/* ---------------- HOSPITAL END CARD ---------------- */
 
 function makeEndCard() {
-
   const hospital = "Major Hospital";
   const doctor = "Major (Dr.) Ratish Kumar";
   const specialty = "Orthopaedic Surgeon";
   const location = "Dhaka, East Champaran, Bihar";
 
   const svg = `
-  <svg xmlns="http://www.w3.org/2000/svg"
-       width="1080"
-       height="1920"
-       viewBox="0 0 1080 1920">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="1080"
+    height="1920"
+    viewBox="0 0 1080 1920">
 
-    <rect width="1080" height="1920" fill="#f7f9fc"/>
+    <rect
+      width="1080"
+      height="1920"
+      fill="#f7f9fc"/>
 
     <rect
       x="70"
@@ -178,22 +208,19 @@ function makeEndCard() {
       rx="48"
       fill="#ffffff"
       stroke="#d8e0ec"
-      stroke-width="5"
-    />
+      stroke-width="5"/>
 
     <circle
       cx="540"
       cy="480"
       r="115"
-      fill="#1769e0"
-    />
+      fill="#1769e0"/>
 
     <path
       d="M500 480h80M540 440v80"
       stroke="#fff"
       stroke-width="28"
-      stroke-linecap="round"
-    />
+      stroke-linecap="round"/>
 
     <text
       x="540"
@@ -202,8 +229,9 @@ function makeEndCard() {
       font-family="Arial,sans-serif"
       font-size="82"
       font-weight="700"
-      fill="#172033"
-    >${hospital}</text>
+      fill="#172033">
+      ${hospital}
+    </text>
 
     <text
       x="540"
@@ -212,8 +240,9 @@ function makeEndCard() {
       font-family="Arial,sans-serif"
       font-size="43"
       font-weight="600"
-      fill="#1769e0"
-    >${doctor}</text>
+      fill="#1769e0">
+      ${doctor}
+    </text>
 
     <text
       x="540"
@@ -221,8 +250,9 @@ function makeEndCard() {
       text-anchor="middle"
       font-family="Arial,sans-serif"
       font-size="38"
-      fill="#39465a"
-    >${specialty}</text>
+      fill="#39465a">
+      ${specialty}
+    </text>
 
     <line
       x1="250"
@@ -230,8 +260,7 @@ function makeEndCard() {
       x2="830"
       y2="1010"
       stroke="#d8e0ec"
-      stroke-width="4"
-    />
+      stroke-width="4"/>
 
     <text
       x="540"
@@ -239,8 +268,9 @@ function makeEndCard() {
       text-anchor="middle"
       font-family="Arial,sans-serif"
       font-size="32"
-      fill="#596579"
-    >${location}</text>
+      fill="#596579">
+      ${location}
+    </text>
 
     <text
       x="540"
@@ -249,8 +279,9 @@ function makeEndCard() {
       font-family="Arial,sans-serif"
       font-size="36"
       font-weight="600"
-      fill="#172033"
-    >Orthopaedic Care &amp; Medical Awareness</text>
+      fill="#172033">
+      Orthopaedic Care &amp; Medical Awareness
+    </text>
 
     <text
       x="540"
@@ -258,8 +289,9 @@ function makeEndCard() {
       text-anchor="middle"
       font-family="Arial,sans-serif"
       font-size="30"
-      fill="#697386"
-    >Consult a qualified doctor for personal medical advice.</text>
+      fill="#697386">
+      Consult a qualified doctor for personal medical advice.
+    </text>
 
   </svg>`;
 
@@ -269,10 +301,7 @@ function makeEndCard() {
   );
 }
 
-
-// ---------------------------------------------------------
-// FFMPEG
-// ---------------------------------------------------------
+/* ---------------- FFMPEG ---------------- */
 
 async function makeVideo(
   images,
@@ -282,7 +311,8 @@ async function makeVideo(
 ) {
 
   const FFmpegNS =
-    window.FFmpegWASM || window.FFmpeg;
+    window.FFmpegWASM ||
+    window.FFmpeg;
 
   const FFmpegUtilNS =
     window.FFmpegUtil;
@@ -303,30 +333,47 @@ async function makeVideo(
   }
 
   const { FFmpeg } = FFmpegNS;
-  const { fetchFile, toBlobURL } = FFmpegUtilNS;
+
+  const {
+    fetchFile,
+    toBlobURL
+  } = FFmpegUtilNS;
 
   const ff = new FFmpeg();
 
   ff.on(
     "progress",
-    ({ progress }) =>
+    ({ progress }) => {
       status(
         "Assembling MP4…",
         80 + Math.round(progress * 19)
-      )
+      );
+    }
   );
 
-  const base =
-    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
+  /*
+    FFmpeg 0.12.10
+  */
 
   const coreBase =
-  "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
 
-const ffmpegWorker =
-  "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js";
+  const ffmpegWorker =
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js";
 
-const [coreURL, wasmURL, classWorkerURL] =
-  await Promise.all([
+  /*
+    IMPORTANT:
+    Convert the worker itself to a Blob URL.
+    This prevents the browser from trying to
+    create a Worker directly from jsDelivr.
+  */
+
+  const [
+    coreURL,
+    wasmURL,
+    classWorkerURL
+  ] = await Promise.all([
+
     toBlobURL(
       `${coreBase}/ffmpeg-core.js`,
       "text/javascript"
@@ -341,24 +388,32 @@ const [coreURL, wasmURL, classWorkerURL] =
       ffmpegWorker,
       "text/javascript"
     )
+
   ]);
 
-await ff.load({
-  coreURL,
-  wasmURL,
-  classWorkerURL
-});
+  await ff.load({
+    coreURL,
+    wasmURL,
+    classWorkerURL
+  });
+
+  /* ---------------- WRITE IMAGES ---------------- */
 
   for (let i = 0; i < images.length; i++) {
+
     await ff.writeFile(
       `img${i}.png`,
       await fetchFile(images[i])
     );
+
   }
+
+  /* ---------------- INPUTS ---------------- */
 
   const args = [];
 
   for (let i = 0; i < images.length; i++) {
+
     args.push(
       "-loop",
       "1",
@@ -367,9 +422,13 @@ await ff.load({
       "-i",
       `img${i}.png`
     );
+
   }
 
+  /* ---------------- MUSIC ---------------- */
+
   if (musicBlob) {
+
     await ff.writeFile(
       "music",
       await fetchFile(musicBlob)
@@ -383,12 +442,15 @@ await ff.load({
     );
   }
 
+  /* ---------------- VIDEO ---------------- */
+
   args.push(
     "-filter_complex",
     `concat=n=${images.length}:v=1:a=0,format=yuv420p[v]`
   );
 
   if (musicBlob) {
+
     args.push(
       "-map",
       "[v]",
@@ -396,22 +458,32 @@ await ff.load({
       `${images.length}:a:0`,
       "-shortest"
     );
+
   } else {
+
     args.push(
       "-map",
       "[v]"
     );
+
   }
 
   args.push(
     "-r",
     "30",
+
     "-c:v",
     "libx264",
+
     "-preset",
     "veryfast",
+
+    "-pix_fmt",
+    "yuv420p",
+
     "-movflags",
     "+faststart",
+
     "video.mp4"
   );
 
@@ -426,16 +498,14 @@ await ff.load({
   );
 }
 
-
-// ---------------------------------------------------------
-// GENERATE
-// ---------------------------------------------------------
+/* ---------------- STOP ---------------- */
 
 $("stop").onclick = () => {
   stopped = true;
   status("Stopping…");
 };
 
+/* ---------------- GENERATE ---------------- */
 
 $("generate").onclick = async () => {
 
@@ -451,13 +521,17 @@ $("generate").onclick = async () => {
 
   $("scenes").innerHTML = "";
 
+  musicInfo = null;
+
   try {
 
     const topic =
       $("topic").value.trim();
 
     if (!topic) {
-      throw Error("Enter a topic first.");
+      throw new Error(
+        "Enter a topic first."
+      );
     }
 
     const count =
@@ -474,27 +548,40 @@ $("generate").onclick = async () => {
       3
     );
 
+    /*
+      OpenRouter API
+    */
 
-    // IMPORTANT:
-    // API expects sceneCount and secondsPerScene.
     const plan = await jsonPost(
       "/api/script",
       {
         topic,
         language,
+
         sceneCount: count,
+
         secondsPerScene: seconds,
+
         hospital:
           "Major Hospital, Dhaka, East Champaran"
       }
     );
 
+    scenes =
+      Array.isArray(plan?.scenes)
+        ? plan.scenes
+        : [];
 
-    scenes = plan.scenes || [];
+    if (!scenes.length) {
+      throw new Error(
+        "The AI did not return any scenes."
+      );
+    }
 
     $("scenesCard")
       .classList.remove("hidden");
 
+    /* ---------------- GENERATE IMAGES ---------------- */
 
     for (
       let i = 0;
@@ -503,27 +590,43 @@ $("generate").onclick = async () => {
     ) {
 
       if (stopped) {
-        throw Error("Stopped");
+        throw new Error("Stopped");
       }
 
       status(
         `Generating scene ${i + 1} of ${scenes.length}…`,
         5 +
-          Math.round(
-            (i / scenes.length) * 50
-          )
+        Math.round(
+          (i / scenes.length) * 50
+        )
       );
 
+      const prompt =
+        scenes[i].visualPrompt ||
+        scenes[i].imagePrompt ||
+        "";
+
+      if (!prompt) {
+        throw new Error(
+          `Scene ${i + 1} has no image prompt.`
+        );
+      }
 
       const r = await jsonPost(
         "/api/image",
         {
-          prompt:
-            scenes[i].visualPrompt ||
-            scenes[i].imagePrompt
+          prompt
         }
       );
 
+      if (
+        !r?.mimeType ||
+        !r?.imageBase64
+      ) {
+        throw new Error(
+          `Image generation failed for scene ${i + 1}.`
+        );
+      }
 
       scenes[i].image =
         dataUrl(
@@ -531,25 +634,31 @@ $("generate").onclick = async () => {
           r.imageBase64
         );
 
-
       const div =
         document.createElement("div");
 
       div.className = "scene";
 
-      div.innerHTML =
-        `<img src="${scenes[i].image}">
-         <div>
-           <h3>${i + 1}. ${esc(scenes[i].title)}</h3>
-           <p>${esc(scenes[i].caption || "")}</p>
-         </div>`;
+      div.innerHTML = `
+        <img src="${scenes[i].image}">
+        <div>
+          <h3>
+            ${i + 1}.
+            ${esc(scenes[i].title)}
+          </h3>
+
+          <p>
+            ${esc(scenes[i].caption || "")}
+          </p>
+        </div>
+      `;
 
       $("scenes")
         .appendChild(div);
     }
 
+    /* ---------------- END CARD ---------------- */
 
-    // Mandatory hospital end card.
     scenes.push({
       title:
         "Major Hospital — End Card",
@@ -561,27 +670,32 @@ $("generate").onclick = async () => {
         makeEndCard()
     });
 
-
     const endDiv =
       document.createElement("div");
 
     endDiv.className = "scene";
 
-    endDiv.innerHTML =
-      `<img src="${scenes[scenes.length - 1].image}">
-       <div>
-         <h3>${scenes.length}. Major Hospital — End Card</h3>
-         <p>
-           Major Hospital • Major (Dr.) Ratish Kumar • Orthopaedic Surgeon
-         </p>
-       </div>`;
+    endDiv.innerHTML = `
+      <img src="${scenes[scenes.length - 1].image}">
+
+      <div>
+        <h3>
+          ${scenes.length}.
+          Major Hospital — End Card
+        </h3>
+
+        <p>
+          Major Hospital • Major (Dr.) Ratish Kumar • Orthopaedic Surgeon
+        </p>
+      </div>
+    `;
 
     $("scenes")
       .appendChild(endDiv);
 
+    /* ---------------- MUSIC ---------------- */
 
     let mb = null;
-
 
     if ($("music").checked) {
 
@@ -596,33 +710,41 @@ $("generate").onclick = async () => {
       if (musicInfo) {
 
         try {
+
           mb =
             await blobFromUrl(
               musicInfo.url
             );
-        } catch (e) {
+
+        } catch {
+
           mb = null;
+
         }
       }
     }
 
+    /* ---------------- VIDEO ---------------- */
 
     status(
       "Building vertical MP4…",
       80
     );
 
-
     const blob =
       await makeVideo(
         scenes.map(
           x => x.image
         ),
+
         seconds,
+
         $("captions").checked,
+
         mb
       );
 
+    /* ---------------- RESULT ---------------- */
 
     const url =
       URL.createObjectURL(blob);
@@ -634,21 +756,27 @@ $("generate").onclick = async () => {
     $("download").download =
       "major-hospital-video.mp4";
 
-
     $("credits").innerHTML =
       musicInfo
-        ? `Music: ${esc(strip(musicInfo.title))}${
+
+        ? `Music: ${esc(
+            strip(musicInfo.title)
+          )}${
             musicInfo.artist
               ? " — " +
                 strip(musicInfo.artist)
               : ""
-          }. License: ${esc(
-            musicInfo.license
-          )}. <a href="${
-            musicInfo.source
-          }" target="_blank" rel="noopener">Source</a>`
-        : "No music track was found; video created without background music.";
+          }. License: ${
+            esc(musicInfo.license)
+          }.
+          <a
+            href="${musicInfo.source}"
+            target="_blank"
+            rel="noopener">
+            Source
+          </a>`
 
+        : "No music track was found; video created without background music.";
 
     $("resultCard")
       .classList.remove("hidden");
@@ -657,7 +785,6 @@ $("generate").onclick = async () => {
       "Video ready.",
       100
     );
-
 
   } catch (e) {
 
@@ -678,10 +805,7 @@ $("generate").onclick = async () => {
   }
 };
 
-
-// ---------------------------------------------------------
-// HELPERS
-// ---------------------------------------------------------
+/* ---------------- ESCAPE HTML ---------------- */
 
 function esc(s) {
 
@@ -698,9 +822,11 @@ function esc(s) {
     );
 }
 
-
 function strip(s) {
 
   return String(s || "")
-    .replace(/<[^>]+>/g, "");
+    .replace(
+      /<[^>]+>/g,
+      ""
+    );
 }
