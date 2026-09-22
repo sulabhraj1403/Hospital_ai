@@ -15,10 +15,17 @@
 <main>
   <section class="card">
     <h1>Create a medical video</h1>
-    <p class="muted">Medical templates create the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
+    <p class="muted">Choose a medical template. The local template engine creates the script, Pollinations AI creates scene images, and the website exports a vertical MP4.</p>
 
-    <label>Topic</label>
-    <textarea id="topic" rows="3" placeholder="Example: Knee pain — common causes and when to see an orthopaedic doctor"></textarea>
+    <label for="topic">Medical template</label>
+    <select id="topic">
+      <option value="knee pain">Knee Pain: When Should You See a Doctor?</option>
+      <option value="back pain">Back Pain: Common Causes and Warning Signs</option>
+      <option value="fracture">Fracture: What To Do After an Injury</option>
+      <option value="arthritis">Arthritis: Understanding Joint Pain</option>
+      <option value="dental pain">Tooth Pain: Common Causes and What To Do</option>
+      <option value="general medical awareness">General Medical Awareness: Know the Basics</option>
+    </select>
 
     <div class="grid">
       <div>
@@ -44,7 +51,17 @@
     <button id="stop" class="danger hidden">Stop</button>
 
     <div id="status" class="status">Ready.</div>
-    <div class="progress"><div id="bar"></div></div>
+
+    <div class="progressGroup">
+      <div class="progressLabel"><span>Overall progress</span><span id="overallPercent">0%</span></div>
+      <div class="progress"><div id="bar"></div></div>
+    </div>
+
+    <div class="progressGroup">
+      <div class="progressLabel"><span>MP4 encoding progress</span><span id="encodingPercent">0%</span></div>
+      <div class="progress"><div id="encodingBar"></div></div>
+      <div class="muted progressNote">Encoding progress is an estimate while FFmpeg processes the MP4.</div>
+    </div>
   </section>
 
   <section id="scenesCard" class="card hidden">
@@ -64,8 +81,7 @@
   <div class="modalBox">
     <button id="closeSettings" class="close">×</button>
     <h2>Website settings</h2>
-    <p>The script uses local medical templates. Pollinations AI is used for scene images.</p>
-    <p class="muted">For deployment, set <code>POLLINATIONS_API_KEY</code> in your hosting provider's environment variables.</p>
+    <p class="muted">Set the Pollinations API key in Vercel Environment Variables. Script generation is local and does not use an AI text API.</p>
     <label>Hospital end-card text</label>
     <input id="hospitalText" value="Major Hospital • Dhaka, East Champaran">
     <button id="saveSettings" class="primary">Save</button>
