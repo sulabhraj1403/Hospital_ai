@@ -1,8 +1,6 @@
 // OpenRouter script + scene-plan generator.
 // Required Vercel environment variable:
 //   OPENROUTER_API_KEY
-//
-// Uses OpenRouter's free-model router with structured JSON output.
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -37,79 +35,55 @@ You are a professional medical awareness video scriptwriter for Major Hospital,
 Dhaka, East Champaran, Bihar, India.
 
 Create accurate, easy-to-understand medical awareness content.
-Do not diagnose an individual patient. Do not make unsupported medical claims.
-Keep the wording suitable for a short vertical social-media video.
+Do not diagnose an individual patient and do not make unsupported medical claims.
 
-Create exactly ${count} main scenes.
-Each scene needs a clear visual description suitable for an AI image generator.
-The requested scene duration is ${seconds} seconds.
+Create exactly ${count} main scenes. The hospital end card is added separately.
 
-The hospital end card is added separately by the application.
-DO NOT create an extra hospital/end-card scene.
+IMPORTANT:
+Return ONLY one valid JSON object.
+Do not use Markdown.
+Do not use code fences.
+Do not write any explanation before or after the JSON.
 
-Use the requested language naturally. For Hindi, use clear Hindi suitable for
-a general Indian audience and keep common medical terms in English where normally understood.
+Required JSON structure:
+{
+  "title": "short video title",
+  "voiceover": "complete short-video voiceover",
+  "scenes": [
+    {
+      "title": "scene title",
+      "caption": "short caption",
+      "visualPrompt": "realistic vertical 9:16 image prompt"
+    }
+  ]
+}
 
-For visualPrompt:
-- realistic, medically appropriate vertical 9:16 scene
-- normal professional clothing and medical settings
-- no sexualized, glamour, provocative, revealing or unnecessarily attractive people
-- no text, logos, hospital names, phone numbers or watermarks inside the image
+The scenes array MUST contain exactly ${count} objects.
+
+For every visualPrompt:
+- realistic medical awareness scene
+- vertical 9:16 composition
+- medically appropriate
+- normal professional clothing
+- normal clinical/patient setting
+- no sexualized, glamour, provocative or revealing people
+- no unnecessary emphasis on attractiveness
+- no text, logos, hospital names, phone numbers or watermarks in the generated image
 `;
 
     const userPrompt = `
 Topic: ${String(topic).trim()}
 Language: ${language}
 
-Create the complete short-video script and exactly ${count} scenes.
-Each scene should have:
-1. title
-2. short caption
-3. visualPrompt
+Create the short medical-awareness video script with exactly ${count} scenes.
+The requested duration is ${seconds} seconds per scene.
+
+Use ${language} naturally. For Hindi, use clear Hindi suitable for a general
+Indian audience while keeping common medical terms in English where appropriate.
 `;
 
-    const schema = {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        title: {
-          type: "string",
-          description: "Short title of the medical awareness video."
-        },
-        voiceover: {
-          type: "string",
-          description: "Complete short-video voiceover in the requested language."
-        },
-        scenes: {
-          type: "array",
-          minItems: count,
-          maxItems: count,
-          items: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              title: {
-                type: "string",
-                description: "Short title for this scene."
-              },
-              caption: {
-                type: "string",
-                description: "Short on-screen caption for this scene."
-              },
-              visualPrompt: {
-                type: "string",
-                description: "Detailed realistic vertical 9:16 AI-image prompt."
-              }
-            },
-            required: ["title", "caption", "visualPrompt"]
-          }
-        }
-      },
-      required: ["title", "voiceover", "scenes"]
-    };
-
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     let response;
 
@@ -131,19 +105,14 @@ Each scene should have:
               { role: "system", content: systemPrompt.trim() },
               { role: "user", content: userPrompt.trim() }
             ],
-            temperature: 0.4,
-            max_tokens: 3000,
+            temperature: 0.2,
+            max_tokens: 2600,
+
+            // JSON object mode is intentionally used instead of json_schema.
+            // It is supported by a broader range of free models routed by
+            // OpenRouter and avoids the empty-content problem seen previously.
             response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "medical_video_plan",
-                strict: true,
-                schema
-              }
-            },
-            provider: {
-              require_parameters: true,
-              allow_fallbacks: true
+              type: "json_object"
             }
           })
         }
@@ -182,20 +151,23 @@ Each scene should have:
       throw new Error("OpenRouter returned an invalid API response.");
     }
 
-    const message = data?.choices?.[0]?.message;
+    const choice = data?.choices?.[0];
 
-    if (message?.refusal) {
-      throw new Error(`OpenRouter refused the request: ${message.refusal}`);
+    if (!choice) {
+      throw new Error("OpenRouter returned no choices.");
     }
 
-    let content = message?.content;
+    const message = choice?.message || {};
 
-    // Some providers return content as an array of text parts.
+    // Different OpenRouter providers can represent content slightly
+    // differently, so handle all common non-streaming forms.
+    let content = message.content;
+
     if (Array.isArray(content)) {
       content = content
         .map(part => {
           if (typeof part === "string") return part;
-          return part?.text || "";
+          return part?.text || part?.content || "";
         })
         .join("");
     }
@@ -204,15 +176,20 @@ Each scene should have:
       content = content.text || content.content || "";
     }
 
-    if (!content) {
-      throw new Error("OpenRouter returned no script content.");
+    // Some providers may place generated text in a text field.
+    if (!content && typeof choice.text === "string") {
+      content = choice.text;
     }
 
-    content = String(content).trim();
+    if (!content) {
+      const finishReason = choice.finish_reason || "unknown";
+      throw new Error(
+        `OpenRouter returned no script content (finish reason: ${finishReason}).`
+      );
+    }
 
-    // Structured output should already be valid JSON, but retain safe
-    // compatibility with providers that add markdown fences.
-    content = content
+    content = String(content)
+      .replace(/^\uFEFF/, "")
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
       .replace(/\s*```$/i, "")
@@ -223,6 +200,7 @@ Each scene should have:
     try {
       result = JSON.parse(content);
     } catch {
+      // Recover a JSON object if a provider added a small amount of text.
       const start = content.indexOf("{");
       const end = content.lastIndexOf("}");
 
@@ -256,8 +234,8 @@ Each scene should have:
     }
 
     result.scenes = result.scenes.map((scene, index) => ({
-      title: String(scene?.title || `Scene ${index + 1}`),
-      caption: String(scene?.caption || ""),
+      title: String(scene?.title || `Scene ${index + 1}`).trim(),
+      caption: String(scene?.caption || "").trim(),
       visualPrompt: String(
         scene?.visualPrompt ||
         scene?.visual ||
@@ -266,19 +244,19 @@ Each scene should have:
       ).trim()
     }));
 
-    const missingPrompt = result.scenes.findIndex(
+    const missing = result.scenes.findIndex(
       scene => !scene.visualPrompt
     );
 
-    if (missingPrompt !== -1) {
+    if (missing !== -1) {
       throw new Error(
-        `Scene ${missingPrompt + 1} has no visual prompt.`
+        `Scene ${missing + 1} has no visual prompt.`
       );
     }
 
     return res.status(200).json({
-      title: String(result.title || ""),
-      voiceover: String(result.voiceover || ""),
+      title: String(result.title || "").trim(),
+      voiceover: String(result.voiceover || "").trim(),
       scenes: result.scenes
     });
 
