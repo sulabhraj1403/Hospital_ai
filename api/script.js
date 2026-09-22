@@ -1,65 +1,68 @@
 // OpenRouter script + scene-plan generator.
-// Required Vercel environment variable:
-// OPENROUTER_API_KEY
+// Required Vercel environment variable: OPENROUTER_API_KEY
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function cleanJsonText(content) {
+  let text = String(content || "")
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+
+  if (start >= 0 && end > start) {
+    text = text.slice(start, end + 1);
+  }
+
+  return text;
+}
 
 export default async function handler(req, res) {
-
   if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "POST only"
-    });
+    return res.status(405).json({ error: "POST only" });
   }
 
   try {
-
     const body = req.body || {};
-    const topic = body.topic;
+    const topic = String(body.topic || "").trim();
     const language = body.language ?? "Hindi";
-
-    // Accept both the current names and the older client names so the
-    // endpoint remains compatible with previous deployed versions.
     const sceneCount = body.sceneCount ?? body.count ?? 6;
     const secondsPerScene = body.secondsPerScene ?? body.seconds ?? 5;
 
-
-    if (!topic || !String(topic).trim()) {
-      return res.status(400).json({
-        error: "Topic required"
-      });
+    if (!topic) {
+      return res.status(400).json({ error: "Topic required" });
     }
 
-
-    const apiKey =
-      process.env.OPENROUTER_API_KEY;
-
-
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       return res.status(500).json({
-        error:
-          "OPENROUTER_API_KEY is not configured in Vercel."
+        error: "OPENROUTER_API_KEY is not configured in Vercel."
       });
     }
 
-
-    const count =
-      Math.max(
-        3,
-        Math.min(
-          10,
-          Number(sceneCount) || 6
-        )
-      );
-
-
-    const seconds =
-      Math.max(
-        3,
-        Math.min(
-          10,
-          Number(secondsPerScene) || 5
-        )
-      );
-
+    const count = Math.max(3, Math.min(8, Number(sceneCount) || 6));
+    const seconds = Math.max(3, Math.min(10, Number(secondsPerScene) || 5));
 
     const systemPrompt = `
 You are a professional medical awareness video scriptwriter for Major Hospital,
@@ -70,17 +73,11 @@ Do not diagnose an individual patient.
 Do not make unsupported medical claims.
 Keep the wording suitable for a short vertical social-media video.
 
-The final video must contain exactly ${count} main scenes.
-
-Each scene should have a clear visual description that can be used as an AI-image prompt.
-
+Create exactly ${count} main scenes.
 The requested scene duration is ${seconds} seconds.
+The application adds the hospital end card separately.
 
-The hospital end card is added separately by the application,
-so DO NOT create an extra hospital/end-card scene.
-
-Return ONLY valid JSON in this exact structure:
-
+Return ONLY valid JSON with this exact structure:
 {
   "title": "string",
   "voiceover": "string",
@@ -93,377 +90,162 @@ Return ONLY valid JSON in this exact structure:
   ]
 }
 
-The scenes array must contain exactly ${count} items.
+The scenes array MUST contain exactly ${count} items.
 `;
-
 
     const userPrompt = `
-Topic: ${String(topic).trim()}
+Topic: ${topic}
 Language: ${language}
 
-Write the complete short-video script and ${count} scene plan.
-
+Create a concise medical-awareness video script and ${count} scene plan.
 Use ${language} naturally.
+For Hindi, use clear Hindi for a general Indian audience and keep common medical terms in English when appropriate.
 
-For Hindi, use clear Hindi suitable for a general
-Indian audience; keep common medical terms in English
-where they are normally understood.
-
-For each visualPrompt, describe a realistic,
-medically appropriate vertical 9:16 scene.
-
-Do not put text, logos, hospital names, phone numbers,
-or watermarks inside the generated image.
-
+For each visualPrompt, describe a realistic, medically appropriate vertical 9:16 scene.
+Do not put text, logos, hospital names, phone numbers, or watermarks inside generated images.
 Use professional, clinically appropriate people and clothing.
-
-Do not use provocative, sexually suggestive, glamour,
-revealing, or unnecessarily attractive poses of girls or women.
-
-Prefer anatomy illustrations, doctors, patients in normal
-medical settings, or neutral clinical visuals when a person
-is not necessary.
+Do not use provocative, sexually suggestive, glamour, revealing, or unnecessarily attractive poses of girls or women.
+Prefer anatomy illustrations, doctors, patients in normal medical settings, or neutral clinical visuals when a person is not necessary.
 `;
 
-
-    // OpenRouter's free router.
+    // These are current free OpenRouter routes. The first is specifically medical;
+    // the second is a smaller high-throughput NVIDIA route; the router is the final fallback.
+    // We use short per-request timeouts so a stalled free provider cannot consume
+    // the entire Vercel function lifetime and produce FUNCTION_INVOCATION_TIMEOUT.
     const models = [
-      "openrouter/free"
+      { id: "inclusionai/ling-3.0-flash-sante:free", timeout: 15000 },
+      { id: "nvidia/nemotron-3.5-lightning:free", timeout: 15000 },
+      { id: "openrouter/free", timeout: 10000 }
     ];
 
-
-    let raw = "";
     let lastError = null;
+    let successfulData = null;
     let usedModel = null;
 
+    const origin =
+      req.headers?.origin ||
+      `https://${req.headers?.host || process.env.VERCEL_URL || "major-hospital-ai-video.vercel.app"}`;
 
-    for (const model of models) {
-
+    for (const candidate of models) {
       try {
+        const response = await fetchWithTimeout(
+          OPENROUTER_URL,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": origin,
+              "X-Title": "Major Hospital AI Video Creator"
+            },
+            body: JSON.stringify({
+              model: candidate.id,
+              messages: [
+                { role: "system", content: systemPrompt.trim() },
+                { role: "user", content: userPrompt.trim() }
+              ],
+              temperature: 0.4,
+              max_tokens: 2200
+              // Do not send response_format here: several current free models
+              // support JSON instruction but do not expose response_format.
+            })
+          },
+          candidate.timeout
+        );
 
-        const response =
-          await fetch(
-            "https://openrouter.ai/api/v1/chat/completions",
-            {
-              method: "POST",
+        const raw = await response.text();
 
-              headers: {
-                "Authorization":
-                  `Bearer ${apiKey}`,
+        if (!response.ok) {
+          let detail = raw;
+          try {
+            const parsed = JSON.parse(raw);
+            detail =
+              parsed?.error?.message ||
+              (typeof parsed?.error === "string" ? parsed.error : null) ||
+              parsed?.message ||
+              raw;
+          } catch {}
 
-                "Content-Type":
-                  "application/json",
-
-                "HTTP-Referer":
-                  (req.headers?.origin ||
-                   `https://${req.headers?.host || process.env.VERCEL_URL || "major-hospital-ai-video.vercel.app"}`),
-
-                "X-Title":
-                  "Major Hospital AI Video Creator"
-              },
-
-
-              body: JSON.stringify({
-
-                model,
-
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      systemPrompt.trim()
-                  },
-
-                  {
-                    role: "user",
-                    content:
-                      userPrompt.trim()
-                  }
-                ],
-
-                temperature: 0.7,
-
-                max_tokens: 3500,
-
-                response_format: {
-                  type: "json_object"
-                }
-              })
-            }
-          );
-
-
-        raw =
-          await response.text();
-
-
-        if (response.ok) {
-
-          usedModel = model;
-
-          break;
+          lastError = new Error(`${response.status}: ${detail}`);
+          console.warn(`OpenRouter model failed: ${candidate.id}`, lastError.message);
+          continue;
         }
-
-
-        let detail = raw;
-
 
         try {
-
-          const parsed =
-            JSON.parse(raw);
-
-          detail =
-            parsed?.error?.message ||
-
-            (
-              typeof parsed?.error === "string"
-                ? parsed.error
-                : null
-            ) ||
-
-            parsed?.message ||
-
-            (
-              parsed?.error
-                ? JSON.stringify(parsed.error)
-                : null
-            ) ||
-
-            raw;
-
-        } catch {}
-
-
-        lastError =
-          new Error(
-            `${response.status}: ${detail}`
-          );
-
-
-        console.warn(
-          `OpenRouter model failed: ${model}`,
-          lastError?.message ||
-          String(lastError)
-        );
-
-
-        if (
-          ![
-            400,
-            401,
-            403,
-            404,
-            408,
-            409,
-            429,
-            500,
-            502,
-            503,
-            504
-          ].includes(response.status)
-        ) {
-          throw lastError;
+          successfulData = JSON.parse(raw);
+          usedModel = candidate.id;
+          break;
+        } catch {
+          lastError = new Error(`OpenRouter returned invalid API JSON from ${candidate.id}.`);
         }
-
-
       } catch (err) {
-
-        lastError = err;
-
-        console.warn(
-          `OpenRouter request failed: ${model}`,
-          err?.message ||
-          JSON.stringify(err)
-        );
+        if (err?.name === "AbortError") {
+          lastError = new Error(`${candidate.id} timed out after ${candidate.timeout / 1000}s`);
+        } else {
+          lastError = err;
+        }
+        console.warn(`OpenRouter request failed: ${candidate.id}`, lastError?.message || String(lastError));
       }
     }
 
-
-    if (!usedModel) {
-
-      throw new Error(
-        `All free AI models are temporarily unavailable. Last error: ${
-          lastError?.message ||
-          "unknown error"
-        }`
-      );
+    if (!successfulData) {
+      return res.status(502).json({
+        error:
+          `AI script service did not respond in time. Please try Generate again. Last error: ${lastError?.message || "unknown error"}`
+      });
     }
 
+    console.log("OpenRouter model used:", usedModel);
 
-    console.log(
-      "OpenRouter model used:",
-      usedModel
-    );
-
-
-    let data;
-
-
-    try {
-
-      data =
-        JSON.parse(raw);
-
-    } catch {
-
-      throw new Error(
-        "OpenRouter returned invalid JSON."
-      );
-    }
-
-
-    let content =
-      data?.choices?.[0]?.message?.content;
-
+    let content = successfulData?.choices?.[0]?.message?.content;
 
     if (Array.isArray(content)) {
-
-      content =
-        content
-          .map(part =>
-            typeof part === "string"
-              ? part
-              : (part?.text || "")
-          )
-          .join("");
+      content = content
+        .map(part => typeof part === "string" ? part : (part?.text || ""))
+        .join("");
     }
-
 
     if (!content) {
-
-      throw new Error(
-        "OpenRouter returned no script content."
-      );
+      throw new Error("OpenRouter returned no script content.");
     }
-
-
-    content =
-      String(content)
-        .replace(
-          /^```json\s*/i,
-          ""
-        )
-        .replace(
-          /^```\s*/i,
-          ""
-        )
-        .replace(
-          /\s*```$/i,
-          ""
-        )
-        .trim();
-
 
     let result;
-
-
     try {
-
-      result =
-        JSON.parse(content);
-
+      result = JSON.parse(cleanJsonText(content));
     } catch {
-
-      const start =
-        content.indexOf("{");
-
-      const end =
-        content.lastIndexOf("}");
-
-
-      if (
-        start >= 0 &&
-        end > start
-      ) {
-
-        result =
-          JSON.parse(
-            content.slice(
-              start,
-              end + 1
-            )
-          );
-
-      } else {
-
-        throw new Error(
-          "OpenRouter did not return the required JSON format."
-        );
-      }
+      throw new Error("OpenRouter did not return the required JSON format.");
     }
-
 
     if (!Array.isArray(result.scenes)) {
+      throw new Error("OpenRouter response is missing scenes.");
+    }
 
+    result.scenes = result.scenes.slice(0, count).map((scene, index) => ({
+      title: String(scene?.title || `Scene ${index + 1}`).trim(),
+      caption: String(scene?.caption || "").trim(),
+      visualPrompt: String(
+        scene?.visualPrompt || scene?.visual || scene?.imagePrompt || ""
+      ).trim()
+    }));
+
+    // If a model accidentally returns fewer scenes, don't send a malformed plan
+    // to the image generator. Report the real problem instead.
+    if (result.scenes.length !== count) {
       throw new Error(
-        "OpenRouter response is missing scenes."
+        `AI returned ${result.scenes.length} scenes; ${count} were required. Please try again.`
       );
     }
 
-
-    result.scenes =
-      result.scenes.slice(
-        0,
-        count
-      );
-
-
-    if (
-      result.scenes.length !== count
-    ) {
-
-      throw new Error(
-        `OpenRouter returned ${result.scenes.length} scenes; ${count} were required.`
-      );
+    const missingPrompt = result.scenes.findIndex(s => !s.visualPrompt);
+    if (missingPrompt !== -1) {
+      throw new Error(`AI returned no visual prompt for scene ${missingPrompt + 1}. Please try again.`);
     }
 
-
-    result.scenes =
-      result.scenes.map(
-        (scene, index) => ({
-
-          title:
-            String(
-              scene?.title ||
-              `Scene ${index + 1}`
-            ),
-
-          caption:
-            String(
-              scene?.caption || ""
-            ),
-
-          visualPrompt:
-            String(
-              scene?.visualPrompt ||
-              scene?.visual ||
-              scene?.imagePrompt ||
-              ""
-            ).trim()
-        })
-      );
-
-
-    return res.status(200).json(
-      result
-    );
-
-
+    return res.status(200).json(result);
   } catch (e) {
-
-    console.error(
-      "OpenRouter script error:",
-      e
-    );
-
-
+    console.error("OpenRouter script error:", e);
     return res.status(500).json({
-
-      error:
-        e?.message ||
-        "Script generation failed"
-
+      error: e?.message || "Script generation failed"
     });
   }
 }
